@@ -39,6 +39,14 @@ shape: one process 1.37 s, four processes 1.66 s, eight processes 3.39 s.
 tools that read an environment variable. `MAKEFLAGS` was verified to take
 effect: eight one-second targets ran in 8022 ms unset and 2010 ms at `-j4`.
 
+Setting `MAKEFLAGS` globally raises a fair objection: in a recursive build,
+does each submake claim its own four jobs and oversubscribe the box? It does
+not. GNU Make passes a jobserver down to submakes, so the ceiling stays global.
+Measured on a three-subdirectory build of twelve one-second targets, the run
+took 3013 ms against a theoretical 3000 ms for a true global `-j4`, and peak
+concurrency was four. Full oversubscription would have finished in about
+1000 ms with twelve jobs at once.
+
 Some runners have no environment variable and need a flag or config entry
 instead. Pass these yourself:
 
