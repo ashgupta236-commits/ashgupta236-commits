@@ -92,3 +92,53 @@ docker run --rm \
 ```
 
 For Compose, add the same bind mount to the services that make outbound calls.
+
+## Network egress
+
+Measured on a session VM on 2026-09-06. Every outbound HTTPS call from the
+box goes through the agent proxy, and the proxy enforces the environment's
+network policy at the `CONNECT` step: a host outside the policy gets a `403`
+before a single byte of the request is sent. The `WebFetch` tool is behind the
+same policy and reports `EGRESS_BLOCKED` for the same hosts, so it is not a
+way around it. Connectors (the Netlify and Vercel MCP servers, GitHub MCP)
+run outside the box and are not affected.
+
+| Host | Result |
+| --- | --- |
+| `github.com` | open, via the proxy |
+| `*.googleapis.com` (`dns`, `domains`, `oauth2`, `cloudresourcemanager`) | open |
+| `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org` | open, bypass the proxy |
+| DNS resolution (`8.8.8.8` on UDP 53) | works, including `NS` and `SOA` lookups |
+| `api.netlify.com`, `app.netlify.com`, `www.netlify.com` | `CONNECT` refused, 403 |
+| `*.netlify.app` (including `netlify-mcp.netlify.app`, the connector's upload path) | `CONNECT` refused, 403 |
+| `api.vercel.com`, `vercel.com`, `*.vercel.app` | `CONNECT` refused, 403 |
+| `novrafoods.com`, `www.novrafoods.com` | `CONNECT` refused, 403 |
+| `dns.google` | `CONNECT` refused, 403 |
+
+What this means for hosting work:
+
+- A hosting provider's API token cannot be used from a session, whatever the
+  token's scope. The Netlify token tested on 2026-09-06 never reached Netlify;
+  the proxy refused the tunnel first.
+- The Netlify connector can create a site and read sites, deploys, teams and
+  forms. Its `deploy-site` operation only returns a CLI command, and that
+  command uploads through `netlify-mcp.netlify.app`, which is blocked. It has
+  no operation for custom domains.
+- The Vercel connector can read projects and deployments and link a GitHub
+  repository as a project. It has no operation for custom domains either.
+- A deployed site cannot be verified from a session: the production domain and
+  the provider's preview domains are all refused.
+
+The policy is set per environment under **Claude Code on the web, environment
+settings, network policy**, see
+<https://code.claude.com/docs/en/claude-code-on-the-web>. To let a session
+deploy and verify a site end to end, allow at least `api.netlify.com` and
+`*.netlify.app` for Netlify, or `api.vercel.com` and `*.vercel.app` for Vercel,
+plus the entity's own domain such as `novrafoods.com`. A new session is needed
+after the change; a running session keeps the old policy.
+
+The session also carries a Google Cloud credential in
+`CLOUDSDK_AUTH_ACCESS_TOKEN`. The `googleapis.com` hosts are open, but the
+auto-mode permission classifier denied the calls that used the credential,
+so Cloud DNS changes from a session need an explicit permission rule in
+`.claude/settings.json` before they can run.
