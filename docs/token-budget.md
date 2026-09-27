@@ -69,13 +69,63 @@ cannot be turned off from this repository.
 3. Disconnect the seven connectors that sit in the "needs sign-in" state,
    or sign in to them if they are wanted. Half-connected is the worst case:
    the cost stays and the tools do nothing.
-4. Start a new session. A running session keeps the connector set it was
-   started with.
+4. Start a new session to be sure. A disconnect can reach a session that is
+   already open, mid-conversation, but a fresh session is the only way to
+   confirm the new set actually took.
 
 With only GitHub and Claude Code Remote attached, the fixed prefix drops by
 an estimated 25,000 to 35,000 tokens per request, roughly a third of the
 session baseline. Response quality and speed are unaffected, since none of
 the removed tools were ever called.
+
+## Recheck after connector cleanup (2026-09-27)
+
+Measured directly: a brand new session's first turn, right after the user
+disconnected most connectors from https://claude.ai/customize/connectors.
+
+| Item | Before | After |
+| --- | --- | --- |
+| New prefix written to cache | 49,669 | 13,153 |
+| Cached prefix read back | 40,236 | 38,451 |
+| The user's message itself | 2 | 2 |
+| **Total** | **~89,900** | **~51,600** |
+
+That is a drop of about 38,000 tokens, roughly 43% of the original fixed
+overhead per request.
+
+### Connectors still attached
+
+Cleanup was partial. As of this recheck, these connectors are still
+connected and loaded into chat, beyond GitHub, Claude Code Remote and
+Claude Docs:
+
+| Connector | Tools (prior count, if measured) |
+| --- | --- |
+| Vercel | 243 |
+| Ahrefs | 135 |
+| higgsfield | 94 |
+| Canva | 40 |
+| Shopify | 40 |
+| Figma | 40 |
+| Gmail | 30 |
+| Gamma | 20 |
+| Google Drive | 11 |
+| Google Calendar | 9 |
+| Netlify | not previously measured; newly connected |
+| 21st Dev Magic | installed and enabled, but its MCP server fails to connect (HTTP 404) |
+| playwright | installed and enabled, but its MCP server fails to connect (HTTP 502) |
+
+None of these are used by work on this repository. The last two are dead
+weight twice over: they add tool names and a per-turn "failed to connect"
+notice to every request, without ever answering a call.
+
+The duplicate Zapier entry, Lovable, Sanity, Webflow, Coupler.io, Slack and
+MotherDuck are now disconnected, as recommended. Several other connectors
+sit in a "needs reconnect" or "connect incomplete" state (3DOptix, Notion,
+Replit, Sentry, Stripe, Cloudinary, Airtable, Klaviyo, Nimble, Runway):
+each of those still adds a notice to every turn until it is either
+reconnected or removed outright, so the same disconnect-or-sign-in choice
+from **The fix** above still applies to them.
 
 ## Keeping the repository lean
 
